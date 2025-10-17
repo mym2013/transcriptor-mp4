@@ -1,0 +1,11 @@
+node_modules/
+.env
+cookies.txt
+transcripciones.sqlite
+uploads/
+temp/
+*.mp3
+*.wav
+*.m4a
+*.webm
+*.mp4
