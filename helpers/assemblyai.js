@@ -35,10 +35,12 @@ async function uploadLocalFile(filePath) {
         method: "POST",
         headers: {
             authorization: AAI_KEY,
-            "transfer-encoding": "chunked"
+            "Content-Type": "application/octet-stream"
         },
-        body: stream
+        body: stream,           // ← COMA necesaria
+        duplex: "half"          // ← requerido por Node 18+/20+/22+ con streams
     });
+
 
     if (!resp.ok) {
         const t = await resp.text();
@@ -61,10 +63,12 @@ async function createTranscriptionJob(localAudioPath) {
 
     const payload = {
         audio_url: audioUrl,
-        // Resumen integrado por AssemblyAI (sin depender de LeMUR por ahora)
-        summarization: true,
-        summary_model: "informative",
-        summary_type: "paragraph"
+        language_code: "es",
+        language_detection: false,
+        punctuate: true,
+        // summarization: true,
+        // summary_model: "informative",
+        // summary_type: "paragraph"
     };
 
     const resp = await fetch(`${AAI_BASE}/transcript`, {
