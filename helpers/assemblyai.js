@@ -8,6 +8,8 @@
 
 const fs = require("fs");
 const path = require("path");
+const { assertUnderLimit } = require("./media");
+
 
 const AAI_BASE = "https://api.assemblyai.com/v2";
 const AAI_KEY = process.env.ASSEMBLYAI_API_KEY;
@@ -58,6 +60,8 @@ async function uploadLocalFile(filePath) {
  */
 async function createTranscriptionJob(localAudioPath) {
     assertKey();
+    // ✅ Verifica tamaño antes de subir by @gtdel
+    await assertUnderLimit(localAudioPath);
 
     const audioUrl = await uploadLocalFile(localAudioPath);
 
