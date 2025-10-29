@@ -1,0 +1,26 @@
+
+
+esta es la forma correcta de dejar el file .mp4 y este es el curl que se debe hacer 
+
+**********************************************************************
+curl -X POST "http://localhost:3001/transcribir" ^
+  -H "Accept: application/json" ^
+  -F "video=@\"D:\repos\transcriptor-mp4\uploads\2-uso responsable AI en UNIR.mp4\";type=video/mp4"
+  
+
+**********************************************************************
+Siempre tener claro que debes proporcionar el nombre preciso sin errores del archivo mp4 que deseas trasncribir
+
+**********************************************************************
+
+curl -X POST "http://localhost:3001/transcribir" ^
+  -H "Accept: application/json" ^
+  -F "video=@\"D:\repos\transcriptor-mp4\uploads\devops-14058 MUDEVOPS14058-AIG.mp4\";type=video/mp4"
+
+**********************************************************************
+bienvenida Mentora 16-oct-2025
+  
+
+curl -X POST "http://localhost:3001/transcribir" ^
+  -H "Accept: application/json" ^
+  -F "video=@\"D:\repos\transcriptor-mp4\uploads\bienvenida Mentora 16-oct-2025.mp4\";type=video/mp4"
