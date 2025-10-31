@@ -6,108 +6,111 @@ const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
 
+const app = express(); // instancia de Express
+
+// === Servir frontend estático ===
+app.use(express.static("public"));
+
+// === Middlewares ===
+app.use(cors());
+app.use(express.json());
+
+// === Configuración de multer para subir MP4 ===
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/");
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now();
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9_.-]/g, "_");
+    cb(null, `${uniqueSuffix}_${safeName}`);
+  },
+});
+const upload = multer({ storage });
+
+// === Helpers ===
 const {
   createTranscriptionJob,
   waitForCompletion,
   getTranscriptText,
-  // summarizeWithLeMUR, // no lo usamos en Cap 6
-} = require("./helpers/assemblyai"); // helper real
+} = require("./helpers/assemblyai");
+
 const { convertirMp4AMp3 } = require("./helpers/media");
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// ===== Configuración general
-app.use(cors({ origin: "http://localhost:3000" }));
-app.use(express.json());
-
-// ===== Log básico
-const LOG_FILE = path.join(__dirname, "uploads", "logs.txt");
-function appendLog(line) {
-  try {
-    fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
-    const ts = new Date().toISOString();
-    fs.appendFileSync(LOG_FILE, `[${ts}] ${line}\n`, "utf8");
-  } catch (err) {
-    console.error("log error:", err);
-  }
-}
-
-// ===== Resumen local básico (2–3 oraciones)
-function resumirBasico(text) {
-  if (!text) return "";
-  const oraciones = text
-    .split(/(?<=[\.!\?])\s+/)
-    .map(s => s.trim())
-    .filter(Boolean);
-  const top = oraciones.slice(0, 3).join(" ");
-  return top || text.slice(0, 400);
-}
-
-// ===== Almacenamiento de archivos
-const UPLOAD_DIR = path.join(__dirname, "uploads");
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
-  filename: (_req, file, cb) => cb(null, Date.now() + "_" + file.originalname),
-});
-const upload = multer({ storage });
-
-// ===== Endpoints
-app.get("/", (_req, res) =>
-  res.send("Servidor funcionando correctamente desde Railway.")
-);
-app.get("/health", (_req, res) =>
-  res.json({ ok: true, service: "backend", port: PORT })
-);
-
-// ===== POST /transcribir (MP4 local → MP3 → AAI → TXT + log)
+// === Endpoint principal: /transcribir ===
 app.post("/transcribir", upload.single("video"), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "Falta el archivo 'video' (.mp4)" });
+    const filePath = req.file.path;
+    const outputDir =
+      req.body.outputDir?.trim() ||
+      process.env.OUTPUT_DIR ||
+      "D:\\repos\\transcriptor-mp4\\output";
 
-    const mp4Path = req.file.path;
-    const base = path.parse(mp4Path).name;
-    appendLog(`Paso2: recibido MP4 -> ${mp4Path}`);
+    if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
-    // MP4 → MP3
-    const { mp3Path } = await convertirMp4AMp3(mp4Path);
-    appendLog(`Paso2: convertido a MP3 -> ${mp3Path}`);
+    const baseName = path.parse(filePath).name;
+    const mp3Path = path.join(outputDir, `${baseName}.mp3`);
 
-    // AssemblyAI (sin summarization del lado AAI)
-    appendLog(`Paso3: creando job en AssemblyAI...`);
-    const transcriptId = await createTranscriptionJob(mp3Path);
-    appendLog(`Paso3: transcriptId=${transcriptId}, esperando...`);
+    // 1️⃣ Convertir MP4 a MP3
+    await convertirMp4AMp3(filePath, mp3Path);
 
-    const done = await waitForCompletion(transcriptId, { intervalMs: 5000, maxMinutes: 30 });
-    appendLog(`Paso3: estado final=${done.status}`);
+    // 2️⃣ Crear job de transcripción
+    const job = await createTranscriptionJob(mp3Path);
 
-    // Obtenemos el texto (solo texto; el resumen lo hacemos local)
-    const { text } = await getTranscriptText(transcriptId);
-    const finalSummary = resumirBasico(text);
+    // 3️⃣ Esperar resultado y obtener texto
+    await waitForCompletion(job.id);
+    const transcriptText = await getTranscriptText(job.id);
 
-    // Guardado TXT
-    const transcriptTxtPath = path.join(UPLOAD_DIR, `${base}_transcripcion.txt`);
-    const summaryTxtPath = path.join(UPLOAD_DIR, `${base}_resumen.txt`);
-    fs.writeFileSync(transcriptTxtPath, text || "", "utf8");
-    fs.writeFileSync(summaryTxtPath, finalSummary || "", "utf8");
-    appendLog(`Paso3: TXT -> ${transcriptTxtPath} | ${summaryTxtPath}`);
+    // 4️⃣ Guardar TXT
+    const transcriptTxtPath = path.join(
+      outputDir,
+      `${baseName}_transcripcion.txt`
+    );
+    fs.writeFileSync(transcriptTxtPath, transcriptText, "utf-8");
+
+    // 5️⃣ (opcional) resumen local
+    const generarResumen =
+      req.body.generarResumen === "on" || req.body.generarResumen === true;
+    let summaryTxtPath = null;
+    if (generarResumen) {
+      const resumen = `Resumen automático:\n${transcriptText
+        .split(" ")
+        .slice(0, 80)
+        .join(" ")} ...`;
+      summaryTxtPath = path.join(outputDir, `${baseName}_resumen.txt`);
+      fs.writeFileSync(summaryTxtPath, resumen, "utf-8");
+    }
 
     return res.json({
       ok: true,
-      mp4Path,
+      mp4Path: filePath,
       mp3Path,
-      transcriptId,
       transcriptTxtPath,
       summaryTxtPath,
-      lengths: { text: (text || "").length, summary: (finalSummary || "").length },
+      outputDir,
     });
   } catch (err) {
-    appendLog(`ERROR /transcribir: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    console.error("Error en /transcribir:", err);
+    return res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-// ===== Start
-app.listen(PORT, () => console.log(`Servidor corriendo en el puerto ${PORT}`));
+// === Endpoint de resumen manual (si existe en backend previo) ===
+app.post("/resumir", async (req, res) => {
+  try {
+    const { texto } = req.body;
+    if (!texto) return res.status(400).json({ ok: false, error: "Sin texto" });
+    const resumen = texto.split(" ").slice(0, 100).join(" ") + " ...";
+    return res.json({ ok: true, resumen });
+  } catch (err) {
+    console.error("Error en /resumir:", err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// === Inicializar servidor ===
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+
+  console.log(`Servidor backend activo en http://localhost:${PORT}`);
+});
