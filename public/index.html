@@ -2,33 +2,67 @@
 <html lang="es">
 
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Transcriptor MP4 → TXT</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body {
-            font-family: system-ui, sans-serif;
-            margin: 40px auto;
-            max-width: 800px;
-            padding: 0 16px;
-            line-height: 1.5;
-        }
+    <link rel="stylesheet" href="styles.css">
 
-        h1 {
-            text-align: center;
-        }
-
-        form {
-            margin-top: 24px;
-        }
-    </style>
 </head>
 
 <body>
-    <h1>Transcriptor local MP4 → TXT (+ resumen)</h1>
-    <form id="formulario" method="post" enctype="multipart/form-data" action="/transcribir">
-        <!-- Campos se agregan en subpasos siguientes -->
-    </form>
+    <div class="wrap">
+        <h1>Transcriptor MP4 → TXT (+ resumen)</h1>
+        <p class="desc">Sube un archivo MP4 <em>o</em> ingresa una URL de YouTube. El backend procesa y devuelve
+            transcripción y, si aplica, un resumen.</p>
+
+        <!-- TODO: Revisar campo prompt de resumen (CAP 10.x). Decidir visibilidad y flujo. -->
+        <p class="todo">TODO (bandera): Revisar campo “prompt de resumen” y su activación en CAP 10.x.</p>
+
+        <form id="form-transcribir" novalidate>
+            <div class="row">
+                <label for="fileInput">Archivo MP4 (opcional)</label>
+                <input id="fileInput" name="video" type="file" accept="video/mp4" />
+                <div class="hint">Si subes un archivo, se prioriza sobre la URL.</div>
+            </div>
+
+            <div class="row">
+                <label for="urlInput">URL de YouTube (opcional)</label>
+                <input id="urlInput" name="url" type="text" placeholder="https://www.youtube.com/watch?v=..." />
+                <div class="hint">Si no subes archivo, se usará esta URL.</div>
+            </div>
+
+            <!-- Bandera visible para el futuro campo de prompt de resumen -->
+            <div class="row">
+                <label for="summaryPrompt" style="display:none;">Prompt de resumen (pendiente de revisión)</label>
+                <textarea id="summaryPrompt" name="summaryPrompt" rows="3"
+                    placeholder="(Pendiente CAP 10.x: definir uso de prompt de resumen) — TODO"
+                    style="display:none;"></textarea>
+                <div class="hint">Bandera: este campo se habilitará tras decidir el flujo de resumen.</div>
+            </div>
+
+            <div class="actions">
+                <button id="btnTranscribir" type="submit">Transcribir</button>
+                <span id="estado" class="feedback"></span>
+            </div>
+        </form>
+
+        <div class="hr"></div>
+
+        <section class="out">
+            <div class="card">
+                <h3>Transcripción</h3>
+                <div id="outTranscripcion" class="mono"></div>
+            </div>
+            <div class="card">
+                <h3>Resumen</h3>
+                <div id="outResumen" class="mono"></div>
+            </div>
+            <div class="card">
+                <h3>Logs</h3>
+                <div id="outLogs" class="mono"></div>
+            </div>
+        </section>
+    </div>
 </body>
 
 </html>
