@@ -9,3 +9,5 @@ temp/
 *.m4a
 *.webm
 *.mp4
+uploads/
+output/
