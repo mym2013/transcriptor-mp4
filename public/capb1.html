@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>CAP B1 – Transcriptor MP4 → TXT</title>
+
+    <!-- Opcional: reutiliza styles.css si quieres -->
+    <link rel="stylesheet" href="styles.css" />
+
+    <style>
+        body {
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 0 16px;
+            font-family: system-ui, sans-serif;
+        }
+
+        .card {
+            border: 1px solid #ccc;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 160px;
+            resize: vertical;
+            font-family: monospace;
+        }
+
+        ul {
+            padding-left: 18px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>CAP B1 – Subir MP4 y obtener transcripción</h1>
+
+    <div class="card">
+        <form id="form-transcriptor">
+            <label>Seleccionar archivo MP4:</label>
+            <input type="file" id="video" name="video" accept="video/mp4" required />
+            <br /><br />
+            <button type="submit" id="btn-enviar">Subir y transcribir</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>Estado</h3>
+        <pre id="status">Esperando...</pre>
+    </div>
+
+    <div class="card">
+        <h3>Transcripción</h3>
+        <textarea id="transcript" readonly placeholder="Aquí aparecerá el texto..."></textarea>
+    </div>
+
+    <div class="card">
+        <h3>Resumen</h3>
+        <textarea id="summary" readonly placeholder="Aquí aparecerá el resumen (si existe)..."></textarea>
+    </div>
+
+    <div class="card">
+        <h3>Archivos generados</h3>
+        <ul id="files-list"></ul>
+    </div>
+
+    <script src="capb1.js" defer></script>
+</body>
+
+</html>
