@@ -133,7 +133,14 @@ function makeLocalSummary(text, maxSentences = 8) {
 async function downloadYoutubeToMp4(url) {
   const stamp = Date.now();
   const outBase = path.join(UPLOADS_DIR, `${stamp}_video.mp4`);
-  await spawnOnce("yt-dlp", ["-f", "mp4", "-o", outBase, url]);
+
+  await spawnOnce("yt-dlp", [
+    "-f", "bv*+ba/b",
+    "--merge-output-format", "mp4",
+    "-o", outBase,
+    url
+  ]);
+
   return outBase;
 }
 
