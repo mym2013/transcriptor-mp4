@@ -7,29 +7,46 @@
     <title>Transcriptor MP4 → TXT</title>
     <link rel="stylesheet" href="styles.css">
     <script src="/script.js" defer></script>
-
 </head>
 
 <body>
     <div class="wrap">
         <h1>Transcriptor MP4 → TXT (+ resumen)</h1>
-        <p class="desc">Sube un archivo MP4 <em>o</em> ingresa una URL de YouTube. El backend procesa y devuelve
-            transcripción y, si aplica, un resumen.</p>
+
+        <p class="desc">
+            Sube un archivo MP4, sube un archivo de audio (MP3 / WAV / M4A)
+            <em>o</em> ingresa una URL de YouTube.
+            El backend procesa y devuelve la transcripción y, si aplica, un resumen.
+        </p>
 
         <!-- TODO: Revisar campo prompt de resumen (CAP 10.x). Decidir visibilidad y flujo. -->
         <p class="todo">TODO (bandera): Revisar campo “prompt de resumen” y su activación en CAP 10.x.</p>
 
         <form id="form-transcribir" novalidate>
+
+            <!-- 1️⃣ Archivo MP4 -->
             <div class="row">
                 <label for="fileInput">Archivo MP4 (opcional)</label>
                 <input id="fileInput" name="video" type="file" accept="video/mp4" />
-                <div class="hint">Si subes un archivo, se prioriza sobre la URL.</div>
+                <div class="hint">Si subes un archivo MP4, se prioriza sobre la URL.</div>
             </div>
 
+            <!-- 2️⃣ URL YouTube -->
             <div class="row">
                 <label for="urlInput">URL de YouTube (opcional)</label>
                 <input id="urlInput" name="url" type="text" placeholder="https://www.youtube.com/watch?v=..." />
                 <div class="hint">Si no subes archivo, se usará esta URL.</div>
+            </div>
+
+            <!-- 3️⃣ Archivo de AUDIO (CAP12) -->
+            <div class="row">
+                <label for="audioInput">Archivo de audio (opcional)</label>
+                <input id="audioInput" name="audio" type="file"
+                    accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/m4a" />
+                <div class="hint">
+                    Formatos admitidos: MP3 / WAV / M4A.
+                    Si subes audio, se prioriza sobre MP4 y URL.
+                </div>
             </div>
 
             <!-- Bandera visible para el futuro campo de prompt de resumen -->
@@ -54,10 +71,12 @@
                 <h3>Transcripción</h3>
                 <div id="outTranscripcion" class="mono"></div>
             </div>
+
             <div class="card">
                 <h3>Resumen</h3>
                 <div id="outResumen" class="mono"></div>
             </div>
+
             <div class="card">
                 <h3>Logs</h3>
                 <div id="outLogs" class="mono"></div>
