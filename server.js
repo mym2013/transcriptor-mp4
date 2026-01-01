@@ -1,4 +1,5 @@
 // server.js — Transcripción AssemblyAI + Resumen LOCAL (sin OpenAI) + frontend CAP B1
+// CAP12: soporte de AUDIO directo (mp3/wav/m4a) + video mp4 + URL
 
 require("dotenv").config();
 const express = require("express");
@@ -135,29 +136,34 @@ async function downloadYoutubeToMp4(url) {
   const outBase = path.join(UPLOADS_DIR, `${stamp}_video.mp4`);
 
   await spawnOnce("yt-dlp", [
-    "-f", "bv*+ba/b",
-    "--merge-output-format", "mp4",
-    "-o", outBase,
-    url
+    "-f",
+    "bv*+ba/b",
+    "--merge-output-format",
+    "mp4",
+    "-o",
+    outBase,
+    url,
   ]);
 
   return outBase;
 }
 
 async function convertMp4ToMp3(mp4Path) {
-  const mp3Path = path.join(
-    UPLOADS_DIR,
-    path.basename(mp4Path, ".mp4") + ".mp3"
-  );
-  await spawnOnce("ffmpeg", [
-    "-y",
-    "-i",
-    mp4Path,
-    "-vn",
-    "-acodec",
-    "libmp3lame",
-    mp3Path,
-  ]);
+  const mp3Path = path.join(UPLOADS_DIR, path.basename(mp4Path, ".mp4") + ".mp3");
+  await spawnOnce("ffmpeg", ["-y", "-i", mp4Path, "-vn", "-acodec", "libmp3lame", mp3Path]);
+  return mp3Path;
+}
+
+// CAP12: AUDIO → MP3 (si ya es mp3, no convierte)
+async function convertAudioToMp3(inputAudioPath) {
+  const ext = path.extname(inputAudioPath).toLowerCase();
+
+  if (ext === ".mp3") return inputAudioPath;
+
+  const mp3Path = path.join(UPLOADS_DIR, path.basename(inputAudioPath, ext) + ".mp3");
+
+  await spawnOnce("ffmpeg", ["-y", "-i", inputAudioPath, "-acodec", "libmp3lame", mp3Path]);
+
   return mp3Path;
 }
 
@@ -194,9 +200,7 @@ async function aaiTranscribe(audioUrl) {
 
   if (!create.ok) {
     const t = await create.text().catch(() => "");
-    throw new Error(
-      `AAI transcript HTTP ${create.status} ${create.statusText} — ${t}`
-    );
+    throw new Error(`AAI transcript HTTP ${create.status} ${create.statusText} — ${t}`);
   }
 
   const job = await create.json();
@@ -207,16 +211,13 @@ async function aaiTranscribe(audioUrl) {
   while (true) {
     await new Promise((res) => setTimeout(res, 2500));
 
-    const poll = await fetch(
-      `https://api.assemblyai.com/v2/transcript/${id}`,
-      { headers: { authorization: AAI_KEY } }
-    );
+    const poll = await fetch(`https://api.assemblyai.com/v2/transcript/${id}`, {
+      headers: { authorization: AAI_KEY },
+    });
 
     if (!poll.ok) {
       const t = await poll.text().catch(() => "");
-      throw new Error(
-        `AAI poll HTTP ${poll.status} ${poll.statusText} — ${t}`
-      );
+      throw new Error(`AAI poll HTTP ${poll.status} ${poll.statusText} — ${t}`);
     }
 
     const data = await poll.json();
@@ -233,108 +234,142 @@ async function aaiTranscribe(audioUrl) {
 }
 
 // ===== Endpoint principal: /transcribir =====
-app.post("/transcribir", upload.single("video"), async (req, res) => {
-  try {
-    const file = req.file || null;
-    const url = (req.body?.url || "").trim();
-
-    // Validación archivo MP4
-    if (file) {
-      const ext = path.extname(file.originalname).toLowerCase();
-      const mime = (file.mimetype || "").toLowerCase();
-      if (ext !== ".mp4" || !mime.includes("video")) {
-        return res
-          .status(400)
-          .json({ ok: false, error: "Formato inválido. Solo MP4." });
-      }
-    }
-
-    let mp4Path = null;
-
-    if (file) {
-      mp4Path = path.resolve(file.path);
-    } else if (url) {
-      mp4Path = await downloadYoutubeToMp4(url);
-    } else {
-      return res
-        .status(400)
-        .json({ ok: false, error: "No se recibió archivo ni URL." });
-    }
-
-    // === MP4 → MP3 ===
-    let mp3Path;
+// CAP12: ahora acepta video (mp4) o audio (mp3/wav/m4a) o url
+app.post(
+  "/transcribir",
+  upload.fields([
+    { name: "video", maxCount: 1 },
+    { name: "audio", maxCount: 1 },
+  ]),
+  async (req, res) => {
     try {
-      mp3Path = await convertMp4ToMp3(mp4Path);
-    } catch (e) {
-      console.error("[FFMPEG] Error:", e.message);
-      return res
-        .status(500)
-        .json({ ok: false, error: "Fallo conversión MP4→MP3." });
-    }
+      const videoFile = req.files?.video?.[0] || null;
+      const audioFile = req.files?.audio?.[0] || null;
+      const url = (req.body?.url || "").trim();
 
-    // === Transcripción AssemblyAI ===
-    let transcriptText = null;
-    let transcriptTxtPath = null;
-    let summaryTxtPath = null;
-    let summaryText = null;
-    let transcribeError = null;
-
-    if (AAI_KEY) {
-      try {
-        const uploadUrl = await aaiUpload(mp3Path);
-        transcriptText = await aaiTranscribe(uploadUrl);
-
-        transcriptTxtPath = path.join(
-          UPLOADS_DIR,
-          path.basename(mp3Path, ".mp3") + "_transcripcion.txt"
-        );
-        await fsp.writeFile(transcriptTxtPath, transcriptText, "utf8");
-        console.log(`[AAI] Transcripción guardada en ${transcriptTxtPath}`);
-      } catch (err) {
-        transcribeError = err.message || String(err);
-        console.error("[AAI] Error:", transcribeError);
+      // Validación mínima de presencia
+      if (!audioFile && !videoFile && !url) {
+        return res.status(400).json({ ok: false, error: "No se recibió archivo (audio/video) ni URL." });
       }
-    }
 
-    // === Resumen LOCAL ===
-    if (transcriptText) {
-      summaryText = makeLocalSummary(transcriptText, 8);
-
-      if (summaryText) {
-        summaryTxtPath = path.join(
-          UPLOADS_DIR,
-          path.basename(mp3Path, ".mp3") + "_resumen.txt"
-        );
-        await fsp.writeFile(summaryTxtPath, summaryText, "utf8");
-        console.log(`[Resumen LOCAL] Guardado en ${summaryTxtPath}`);
+      // Validación archivo VIDEO MP4 (si viene)
+      if (videoFile) {
+        const ext = path.extname(videoFile.originalname).toLowerCase();
+        const mime = (videoFile.mimetype || "").toLowerCase();
+        if (ext !== ".mp4" || !mime.includes("video")) {
+          return res.status(400).json({ ok: false, error: "Formato inválido en video. Solo MP4." });
+        }
       }
+
+      // Validación archivo AUDIO (si viene)
+      if (audioFile) {
+        const ext = path.extname(audioFile.originalname).toLowerCase();
+        const mime = (audioFile.mimetype || "").toLowerCase();
+
+        const allowedExt = new Set([".mp3", ".wav", ".m4a"]);
+        const mimeOk =
+          mime.startsWith("audio/") ||
+          mime.includes("mpeg") ||
+          mime.includes("wav") ||
+          mime.includes("mp4");
+
+        if (!allowedExt.has(ext) || !mimeOk) {
+          return res.status(400).json({ ok: false, error: "Formato inválido en audio. Solo MP3/WAV/M4A." });
+        }
+      }
+
+      // Priorización temporal (regla final se define luego): audio > video > url
+      const sourceType = audioFile ? "audio" : videoFile ? "video" : "url";
+
+      let mp4Path = null;
+      let mp3Path = null;
+
+      if (audioFile) {
+        const audioPath = path.resolve(audioFile.path);
+        try {
+          mp3Path = await convertAudioToMp3(audioPath);
+        } catch (e) {
+          console.error("[FFMPEG] Error:", e.message);
+          return res.status(500).json({ ok: false, error: "Fallo conversión AUDIO→MP3." });
+        }
+      } else {
+        if (videoFile) {
+          mp4Path = path.resolve(videoFile.path);
+        } else if (url) {
+          mp4Path = await downloadYoutubeToMp4(url);
+        }
+
+        if (!mp4Path) {
+          return res.status(400).json({ ok: false, error: "No se pudo obtener MP4 desde archivo o URL." });
+        }
+
+        try {
+          mp3Path = await convertMp4ToMp3(mp4Path);
+        } catch (e) {
+          console.error("[FFMPEG] Error:", e.message);
+          return res.status(500).json({ ok: false, error: "Fallo conversión MP4→MP3." });
+        }
+      }
+
+      // === Transcripción AssemblyAI ===
+      let transcriptText = null;
+      let transcriptTxtPath = null;
+      let summaryTxtPath = null;
+      let summaryText = null;
+      let transcribeError = null;
+
+      if (AAI_KEY) {
+        try {
+          const uploadUrl = await aaiUpload(mp3Path);
+          transcriptText = await aaiTranscribe(uploadUrl);
+
+          transcriptTxtPath = path.join(UPLOADS_DIR, path.basename(mp3Path, ".mp3") + "_transcripcion.txt");
+          await fsp.writeFile(transcriptTxtPath, transcriptText, "utf8");
+          console.log(`[AAI] Transcripción guardada en ${transcriptTxtPath}`);
+        } catch (err) {
+          transcribeError = err.message || String(err);
+          console.error("[AAI] Error:", transcribeError);
+        }
+      }
+
+      // === Resumen LOCAL ===
+      if (transcriptText) {
+        summaryText = makeLocalSummary(transcriptText, 8);
+
+        if (summaryText) {
+          summaryTxtPath = path.join(UPLOADS_DIR, path.basename(mp3Path, ".mp3") + "_resumen.txt");
+          await fsp.writeFile(summaryTxtPath, summaryText, "utf8");
+          console.log(`[Resumen LOCAL] Guardado en ${summaryTxtPath}`);
+        }
+      }
+
+      // === Mover artefactos a output/ ===
+      const finalMp4 = moveTo(mp4Path, OUTPUT_ROOT); // puede ser null (si sourceType=audio)
+      const finalMp3 = moveTo(mp3Path, OUTPUT_ROOT);
+      const finalTr = moveTo(transcriptTxtPath, OUTPUT_ROOT);
+      const finalSm = moveTo(summaryTxtPath, OUTPUT_ROOT);
+
+      return res.json({
+        ok: true,
+        message: "Proceso completado (AssemblyAI + resumen LOCAL).",
+        sourceType,
+        mp4Url: finalMp4 ? toPublicUrl(finalMp4) : null,
+        mp3Url: finalMp3 ? toPublicUrl(finalMp3) : null,
+        transcriptUrl: finalTr ? toPublicUrl(finalTr) : null,
+        summaryUrl: finalSm ? toPublicUrl(finalSm) : null,
+        transcriptText,
+        summaryText,
+        transcribeError,
+      });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({
+        ok: false,
+        error: err.message || "Error en /transcribir.",
+      });
     }
-
-    // === Mover artefactos a output/ ===
-    const finalMp4 = moveTo(mp4Path, OUTPUT_ROOT);
-    const finalMp3 = moveTo(mp3Path, OUTPUT_ROOT);
-    const finalTr = moveTo(transcriptTxtPath, OUTPUT_ROOT);
-    const finalSm = moveTo(summaryTxtPath, OUTPUT_ROOT);
-
-    return res.json({
-      ok: true,
-      message: "Proceso completado (AssemblyAI + resumen LOCAL).",
-      mp4Url: finalMp4 ? toPublicUrl(finalMp4) : null,
-      mp3Url: finalMp3 ? toPublicUrl(finalMp3) : null,
-      transcriptUrl: finalTr ? toPublicUrl(finalTr) : null,
-      summaryUrl: finalSm ? toPublicUrl(finalSm) : null,
-      transcriptText,
-      summaryText,
-      transcribeError,
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message || "Error en /transcribir.",
-    });
   }
-});
+);
 
 // ===== Inicio servidor =====
 app.listen(PORT, () => {
