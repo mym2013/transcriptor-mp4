@@ -19,28 +19,25 @@
             El backend procesa y devuelve la transcripción y, si aplica, un resumen.
         </p>
 
-        <!-- TODO: Revisar campo prompt de resumen (CAP 10.x). Decidir visibilidad y flujo. -->
-        <p class="todo">TODO (bandera): Revisar campo “prompt de resumen” y su activación en CAP 10.x.</p>
-
         <form id="form-transcribir" novalidate>
 
             <!-- 1️⃣ Archivo MP4 -->
             <div class="row">
-                <label for="fileInput">Archivo MP4 (opcional)</label>
+                <label for="fileInput">Archivo MP4 (opción 1 )</label>
                 <input id="fileInput" name="video" type="file" accept="video/mp4" />
                 <div class="hint">Si subes un archivo MP4, se prioriza sobre la URL.</div>
             </div>
 
             <!-- 2️⃣ URL YouTube -->
             <div class="row">
-                <label for="urlInput">URL de YouTube (opcional)</label>
+                <label for="urlInput">URL de YouTube (opción 2 )</label>
                 <input id="urlInput" name="url" type="text" placeholder="https://www.youtube.com/watch?v=..." />
                 <div class="hint">Si no subes archivo, se usará esta URL.</div>
             </div>
 
             <!-- 3️⃣ Archivo de AUDIO (CAP12) -->
             <div class="row">
-                <label for="audioInput">Archivo de audio (opcional)</label>
+                <label for="audioInput">Archivo de audio (opción 3)</label>
                 <input id="audioInput" name="audio" type="file"
                     accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/m4a" />
                 <div class="hint">
@@ -55,7 +52,7 @@
                 <textarea id="summaryPrompt" name="summaryPrompt" rows="3"
                     placeholder="(Pendiente CAP 10.x: definir uso de prompt de resumen) — TODO"
                     style="display:none;"></textarea>
-                <div class="hint">Bandera: este campo se habilitará tras decidir el flujo de resumen.</div>
+                <!--div class="hint">Bandera: este campo se habilitará tras decidir el flujo de resumen.</div-->
             </div>
 
             <div class="actions">
