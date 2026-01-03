@@ -15,16 +15,24 @@ body {
 }
 
 h1 {
-    margin: 0 0 8px;
-    font-size: 22px;
+    margin: 0 0 12px;
+    font-size: 24px;
+    font-weight: 700;
+    color: #38bdf8;
+    /* mismo celeste que los labels */
+    text-align: center;
 }
 
+
+/* Descripción superior */
 p.desc {
     margin: 0 0 20px;
-    color: #94a3b8;
+    color: #eab308;
+    /* amarillo visible */
     font-size: 14px;
 }
 
+/* Form */
 form {
     display: grid;
     gap: 16px;
@@ -35,12 +43,15 @@ form {
     gap: 8px;
 }
 
+/* Labels */
 label {
     font-weight: 600;
     font-size: 14px;
-    color: #cbd5e1;
+    color: #38bdf8;
+    /* celeste */
 }
 
+/* Inputs */
 input[type="file"],
 input[type="text"],
 textarea {
@@ -51,11 +62,14 @@ textarea {
     color: #e2e8f0;
 }
 
+/* Textos de ayuda */
 .hint {
     font-size: 12px;
-    color: #94a3b8;
+    color: #fbbf24;
+    /* amarillo */
 }
 
+/* Acciones */
 .actions {
     display: flex;
     gap: 12px;
@@ -77,6 +91,7 @@ button:disabled {
     cursor: not-allowed;
 }
 
+/* Feedback */
 .feedback {
     margin-top: 8px;
     font-size: 13px;
@@ -84,6 +99,7 @@ button:disabled {
     color: #a5b4fc;
 }
 
+/* Separador */
 .hr {
     height: 1px;
     background: #1f2937;
@@ -91,6 +107,7 @@ button:disabled {
     border: 0;
 }
 
+/* Resultados */
 .out {
     display: grid;
     gap: 12px;
@@ -114,6 +131,7 @@ button:disabled {
     white-space: pre-wrap;
 }
 
+/* Banderas / TODO */
 .todo {
     color: #fbbf24;
     font-size: 12px;
