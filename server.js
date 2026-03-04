@@ -1,4 +1,4 @@
-// server.js — Transcripción AssemblyAI + Resumen LOCAL (sin OpenAI) + frontend CAP B1
+// server.js — Transcripción AssemblyAI + Resumen LLM (DeepSeek) + frontend CAP B1
 // CAP12: soporte de AUDIO directo (mp3/wav/m4a) + video mp4 + URL
 
 require("dotenv").config();
@@ -9,14 +9,22 @@ const fs = require("fs");
 const fsp = require("fs/promises");
 const multer = require("multer");
 const { spawn } = require("child_process");
+const { buildExecutiveSummaryPrompt } = require("./helpers/prompts");
+
+// fetch (Node 18+ ya lo trae; para Node <18 usamos node-fetch dinámico)
+let fetch = global.fetch;
+if (!fetch) {
+  fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
+}
 
 // ===== Config básica =====
 const app = express();
 const PORT = process.env.PORT || 3001;
 const AAI_KEY = process.env.ASSEMBLYAI_API_KEY || "";
+const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY || "";
 
 console.log(`[CAP11] AAI key cargada: ${AAI_KEY ? "SÍ" : "NO"}`);
-console.log(`[Resumen] Modo LOCAL (sin OpenAI, sin costo)`);
+console.log(`[Resumen] Modo LLM (DeepSeek)`);
 
 // ===== Middlewares =====
 app.use(cors());
@@ -87,7 +95,7 @@ function spawnOnce(bin, args, options = {}) {
   });
 }
 
-// ===== Resumen LOCAL (extractivo básico, sin IA externa) =====
+// ===== Resumen LOCAL (extractivo básico, fallback sin LLM) =====
 // Toma las frases más representativas según frecuencia de palabras
 function makeLocalSummary(text, maxSentences = 8) {
   if (!text || typeof text !== "string") return null;
@@ -128,6 +136,38 @@ function makeLocalSummary(text, maxSentences = 8) {
   top.sort((a, b) => a.idx - b.idx);
 
   return top.map((x) => x.sentence.trim()).join(" ");
+}
+
+// ===== Resumen LLM (DeepSeek) =====
+async function generateLLMSummary(transcriptText) {
+  if (!transcriptText || typeof transcriptText !== "string") return null;
+  if (!DEEPSEEK_KEY) {
+    console.warn("[DeepSeek] No hay DEEPSEEK_API_KEY; no se generará resumen.");
+    return null;
+  }
+
+  const prompt = buildExecutiveSummaryPrompt(transcriptText);
+
+  const resp = await fetch("https://api.deepseek.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${DEEPSEEK_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.3,
+    }),
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => "");
+    throw new Error(`DeepSeek error ${resp.status}: ${errText}`);
+  }
+
+  const data = await resp.json();
+  return data?.choices?.[0]?.message?.content?.trim() || null;
 }
 
 // ===== yt-dlp y ffmpeg =====
@@ -332,14 +372,14 @@ app.post(
         }
       }
 
-      // === Resumen LOCAL ===
+      // === Resumen LLM ===
       if (transcriptText) {
-        summaryText = makeLocalSummary(transcriptText, 8);
+        summaryText = await generateLLMSummary(transcriptText);
 
         if (summaryText) {
           summaryTxtPath = path.join(UPLOADS_DIR, path.basename(mp3Path, ".mp3") + "_resumen.txt");
           await fsp.writeFile(summaryTxtPath, summaryText, "utf8");
-          console.log(`[Resumen LOCAL] Guardado en ${summaryTxtPath}`);
+          console.log(`[Resumen LLM] Guardado en ${summaryTxtPath}`);
         }
       }
 
@@ -347,11 +387,11 @@ app.post(
       const finalMp4 = moveTo(mp4Path, OUTPUT_ROOT); // puede ser null (si sourceType=audio)
       const finalMp3 = moveTo(mp3Path, OUTPUT_ROOT);
       const finalTr = moveTo(transcriptTxtPath, OUTPUT_ROOT);
-      const finalSm = moveTo(summaryTxtPath, OUTPUT_ROOT);
+      const finalSm = summaryTxtPath ? moveTo(summaryTxtPath, OUTPUT_ROOT) : null;
 
       return res.json({
         ok: true,
-        message: "Proceso completado (AssemblyAI + resumen LOCAL).",
+        message: "Proceso completado (AssemblyAI + resumen LLM).",
         sourceType,
         mp4Url: finalMp4 ? toPublicUrl(finalMp4) : null,
         mp3Url: finalMp3 ? toPublicUrl(finalMp3) : null,
