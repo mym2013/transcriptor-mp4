@@ -100,4 +100,50 @@ Cerrar vectores de ataque que exponían el servidor y generaban gastos no autori
 - **Economía:** Se reducen gastos no autorizados en servicios de pago.
 - **Estabilidad:** El servidor no procesa peticiones maliciosas.
 
-********************************************************************************************************************************************************************
+**************************************************************************************************************************** TEXTO PARA EL README DEL 9 DE JULIO (FASE 2 - ROBUSTEZ)
+Esto es lo que añades a tu README.md (después de la entrada del 8 de julio):
+## 📅 9 de Julio - Robustez (Fase 2)
+
+### 🎯 Objetivo
+Hacer la app más resistente a fallos, que no se cuelgue, no acumule basura y sea portable entre sistemas operativos.
+
+### 🔧 Cambios Realizados
+
+#### 1. Timeout en AssemblyAI
+- **Antes:** El polling de AssemblyAI era un `while(true)` sin límite de tiempo.
+- **Ahora:** Timeout de 60 segundos. Si no responde, devuelve error controlado.
+- **Archivo:** `transcriber.js`
+- **Commit:** `[hash del commit]`
+
+#### 2. Limpieza de Archivos Temporales
+- **Antes:** Si fallaba la conversión o transcripción, los archivos MP4/MP3 quedaban huérfanos en `/uploads`.
+- **Ahora:** Se eliminan en los bloques `catch` usando `fs.unlink`.
+- **Archivo:** `videoProcessor.js`
+- **Commit:** `[hash del commit]`
+
+#### 3. yt-dlp Dinámico por Sistema Operativo
+- **Antes:** Ruta hardcodeada a `yt-dlp.exe` (solo Windows).
+- **Ahora:** Detecta `process.platform` y usa el binario correcto:
+  - Windows: `yt-dlp.exe`
+  - Linux/macOS: `yt-dlp` (sin extensión)
+- **Archivo:** `videoProcessor.js`
+- **Commit:** `[hash del commit]`
+
+#### 4. Corrección de `fs.renameSync`
+- **Antes:** Usaba `renameSync` que falla si los discos son distintos (error EXDEV).
+- **Ahora:** Usa `copyFile` + `unlink` para mover archivos de forma segura.
+- **Archivo:** `videoProcessor.js`
+- **Commit:** `[hash del commit]`
+
+### ✅ Pruebas Realizadas
+- [x] Timeout: AssemblyAI tarda >60s → devuelve error 504.
+- [x] Limpieza: Si falla, el archivo temporal se borra automáticamente.
+- [x] Multi-OS: Probado en Windows y Linux (WSL).
+- [x] Movimiento de archivos: Funciona incluso si `/uploads` y `/output` están en discos distintos.
+
+### 📊 Impacto
+- **Estabilidad:** La app nunca se queda colgada esperando a AssemblyAI.
+- **Almacenamiento:** No se acumulan archivos basura en el servidor.
+- **Portabilidad:** Puede ejecutarse en cualquier sistema operativo sin cambios.
+
+****************************************************************************************************************************
