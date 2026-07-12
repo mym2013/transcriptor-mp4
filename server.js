@@ -35,6 +35,8 @@ app.use(express.static("public"));
 // ===== Directorios =====
 const OUTPUT_ROOT = path.join(__dirname, "output");
 const UPLOADS_DIR = path.join(__dirname, "uploads");
+const TOOLS_DIR = path.join(__dirname, "herramientas");
+const YT_DLP_PATH = path.join(TOOLS_DIR, "yt-dlp.exe");
 
 if (!fs.existsSync(OUTPUT_ROOT)) fs.mkdirSync(OUTPUT_ROOT, { recursive: true });
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -175,7 +177,7 @@ async function downloadYoutubeToMp4(url) {
   const stamp = Date.now();
   const outBase = path.join(UPLOADS_DIR, `${stamp}_video.mp4`);
 
-  await spawnOnce("yt-dlp", [
+  await spawnOnce(YT_DLP_PATH, [
     "-f",
     "bv*+ba/b",
     "--merge-output-format",
