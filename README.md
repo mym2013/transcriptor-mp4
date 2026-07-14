@@ -190,3 +190,5 @@ Hacer el código más fácil de leer, entender y modificar para futuros desarrol
 - **Legibilidad:** Un nuevo desarrollador puede entender el código en 30 minutos (antes tardaba horas).
 - **Mantenimiento:** Cambiar una funcionalidad solo afecta a su módulo, no a todo el sistema.
 - **Escalabilidad:** Añadir nuevas funcionalidades (ej. soporte para otro proveedor de IA) es mucho más fácil.
+*********************************************************************************************
+📝 TEXTO PARA EL README DEL 14 DE JULIO (CÓDIGO - SEGURIDAD)
