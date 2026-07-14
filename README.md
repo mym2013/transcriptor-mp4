@@ -190,5 +190,46 @@ Hacer el código más fácil de leer, entender y modificar para futuros desarrol
 - **Legibilidad:** Un nuevo desarrollador puede entender el código en 30 minutos (antes tardaba horas).
 - **Mantenimiento:** Cambiar una funcionalidad solo afecta a su módulo, no a todo el sistema.
 - **Escalabilidad:** Añadir nuevas funcionalidades (ej. soporte para otro proveedor de IA) es mucho más fácil.
-*********************************************************************************************
+
+****************************************************
 📝 TEXTO PARA EL README DEL 14 DE JULIO (CÓDIGO - SEGURIDAD)
+## 📅 14 de Julio - Implementación de Seguridad (Fase 1)
+
+### 🎯 Objetivo
+Llevar a código las medidas de seguridad planificadas para proteger la API.
+
+### 🔧 Cambios Realizados
+
+#### 1. Configuración de CORS
+- **Implementación:** `cors({ origin: 'https://tufrontend.com' })`
+- **Archivo:** `server.js`
+- **Commit:** `[hash del commit]`
+
+#### 2. Rate Limiting
+- **Implementación:** `express-rate-limit` con 10 peticiones/minuto por IP
+- **Archivo:** `server.js`
+- **Commit:** `[hash del commit]`
+
+#### 3. Validación de URLs (Anti-SSRF)
+- **Implementación:** Función `esUrlSegura()` en `utils/urlValidator.js`
+- **Validaciones:**
+  - Solo protocolos HTTP/HTTPS
+  - Resolución DNS a IP pública (no privada)
+  - Bloqueo de rangos: 10.x.x.x, 172.16.x.x, 192.168.x.x, 127.0.0.1
+- **Archivo:** `utils/urlValidator.js` (nuevo)
+- **Commit:** `[hash del commit]`
+
+### ✅ Pruebas Realizadas
+- [x] CORS: Petición desde origen no autorizado → 403
+- [x] Rate Limit: 11ª petición en 1 minuto → 429
+- [x] SSRF: `http://localhost:3000/admin` → 400 (rechazada)
+- [x] URL válida: `https://youtube.com/watch?v=abc` → ✅ pasa
+- [x] URL válida: `https://facebook.com/watch?v=123` → ✅ pasa
+
+### 📊 Impacto
+- **Seguridad:** API protegida contra abusos y ataques SSRF
+- **Economía:** Gastos controlados en AssemblyAI y DeepSeek
+- **Tranquilidad:** El servidor solo procesa peticiones legítimas
+
+*********************************
+📝 TEXTO PARA EL README DEL 15 DE JULIO (CÓDIGO - ROBUSTEZ)
