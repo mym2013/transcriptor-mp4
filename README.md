@@ -233,3 +233,45 @@ Llevar a código las medidas de seguridad planificadas para proteger la API.
 
 *********************************
 📝 TEXTO PARA EL README DEL 15 DE JULIO (CÓDIGO - ROBUSTEZ)
+## 📅 15 de Julio - Implementación de Robustez (Fase 2)
+
+### 🎯 Objetivo
+Hacer la app resistente a fallos, portable y eficiente en el uso de recursos.
+
+### 🔧 Cambios Realizados
+
+#### 1. Timeout en AssemblyAI
+- **Implementación:** Timeout de 60 segundos en el polling
+- **Comportamiento:** Si no responde → error 504 (Gateway Timeout)
+- **Archivo:** `transcriber.js`
+- **Commit:** `[hash del commit]`
+
+#### 2. Limpieza de Archivos Temporales
+- **Implementación:** `fs.unlink` en bloques `catch`
+- **Archivos afectados:** MP4 descargados y MP3 convertidos
+- **Archivo:** `videoProcessor.js`
+- **Commit:** `[hash del commit]`
+
+#### 3. yt-dlp Dinámico por SO
+- **Implementación:** Detección de `process.platform`
+- **Windows:** `yt-dlp.exe`
+- **Linux/macOS:** `yt-dlp` (sin extensión)
+- **Archivo:** `videoProcessor.js`
+- **Commit:** `[hash del commit]`
+
+#### 4. Fix de `fs.renameSync`
+- **Problema:** Error EXDEV cuando discos son distintos
+- **Solución:** `fs.copyFile` + `fs.unlink` en lugar de `renameSync`
+- **Archivo:** `videoProcessor.js`
+- **Commit:** `[hash del commit]`
+
+### ✅ Pruebas Realizadas
+- [x] Timeout: AssemblyAI >60s → error 504
+- [x] Limpieza: Archivos eliminados al fallar
+- [x] Multi-OS: Probado en Windows 11 y Ubuntu (WSL2)
+- [x] Movimiento: Archivos copiados correctamente entre discos distintos
+
+### 📊 Impacto
+- **Estabilidad:** La app nunca se queda colgada
+- **Almacenamiento:** No se acumula basura en el servidor
+- **Portabilidad:** Funciona en cualquier sistema operativo
