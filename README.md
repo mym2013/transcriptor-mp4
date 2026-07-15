@@ -275,3 +275,45 @@ Hacer la app resistente a fallos, portable y eficiente en el uso de recursos.
 - **Estabilidad:** La app nunca se queda colgada
 - **Almacenamiento:** No se acumula basura en el servidor
 - **Portabilidad:** Funciona en cualquier sistema operativo
+**************************
+📝 TEXTO PARA EL README DEL 17 DE JULIO (CÓDIGO - MANTENIBILIDAD
+## 📅 17 de Julio - Implementación de Mantenibilidad (Fase 3)
+
+### 🎯 Objetivo
+Mejorar la legibilidad, organización y documentación del código.
+
+### 🔧 Cambios Realizados
+
+#### 1. Separación en Módulos
+- **Antes:** `server.js` con +500 líneas
+- **Ahora:**
+  - `videoProcessor.js` - Descarga, conversión, limpieza
+  - `transcriber.js` - AssemblyAI polling
+  - `summarizer.js` - DeepSeek y fallback local
+  - `server.js` - Solo rutas y configuración
+- **Commit:** `[hash del commit]`
+
+#### 2. Mejora de Nombres y Legibilidad
+- **Antes:** Variables como `a`, `tmp`, `r`, `cb`
+- **Ahora:** `precioTotal`, `archivoTemporal`, `resultado`, `callback`
+- **Funciones:** Divididas en unidades más pequeñas y específicas
+- **Commit:** `[hash del commit]`
+
+#### 3. Documentación con JSDoc
+- **Funciones documentadas:**
+  - `descargarVideo()`
+  - `convertirMP4aMP3()`
+  - `transcribirConAssemblyAI()`
+  - `resumirConDeepSeek()`
+  - `makeLocalSummary()`
+- **Commit:** `[hash del commit]`
+
+### ✅ Pruebas Realizadas
+- [x] Regresión: Todas las funcionalidades siguen funcionando igual
+- [x] Importaciones: Todos los módulos se importan correctamente
+- [x] Documentación: JSDoc visible en VS Code al hacer hover
+
+### 📊 Impacto
+- **Legibilidad:** Código fácil de entender para nuevos desarrolladores
+- **Mantenimiento:** Cambios localizados en módulos específicos
+- **Escalabilidad:** Añadir nuevas funcionalidades es más simple
