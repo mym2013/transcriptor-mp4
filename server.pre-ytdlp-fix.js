@@ -88,51 +88,11 @@ function toPublicUrl(absPath) {
 
 function spawnOnce(bin, args, options = {}) {
   return new Promise((resolve, reject) => {
-    let stdout = "";
-    let stderr = "";
-
-    const p = spawn(bin, args, {
-      ...options,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    if (p.stdout) {
-      p.stdout.on("data", (data) => {
-        const text = data.toString();
-        stdout += text;
-        process.stdout.write(text);
-      });
-    }
-
-    if (p.stderr) {
-      p.stderr.on("data", (data) => {
-        const text = data.toString();
-        stderr += text;
-        process.stderr.write(text);
-      });
-    }
-
-    p.on("error", (err) => {
-      err.stdout = stdout;
-      err.stderr = stderr;
-      reject(err);
-    });
-
-    p.on("close", (code) => {
-      if (code === 0) {
-        return resolve({
-          code,
-          stdout,
-          stderr,
-        });
-      }
-
-      const error = new Error(`${bin} salió con código ${code}`);
-      error.code = code;
-      error.stdout = stdout;
-      error.stderr = stderr;
-
-      reject(error);
+    const p = spawn(bin, args, { stdio: "inherit", ...options });
+    p.on("error", reject);
+    p.on("exit", (code) => {
+      if (code === 0) return resolve();
+      reject(new Error(`${bin} salió con código ${code}`));
     });
   });
 }
@@ -197,7 +157,7 @@ async function generateLLMSummary(transcriptText) {
       Authorization: `Bearer ${DEEPSEEK_KEY}`,
     },
     body: JSON.stringify({
-      model: "deepseek-v4-flash",
+      model: "deepseek-chat",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.3,
     }),
@@ -217,49 +177,17 @@ async function downloadYoutubeToMp4(url) {
   const stamp = Date.now();
   const outBase = path.join(UPLOADS_DIR, `${stamp}_video.mp4`);
 
-  try {
-    await spawnOnce(YT_DLP_PATH, [
-      "--js-runtimes",
-      "node",
-      "-f",
-      "bv*+ba/b",
-      "--merge-output-format",
-      "mp4",
-      "-o",
-      outBase,
-      url,
-    ]);
+  await spawnOnce(YT_DLP_PATH, [
+    "-f",
+    "bv*+ba/b",
+    "--merge-output-format",
+    "mp4",
+    "-o",
+    outBase,
+    url,
+  ]);
 
-    return outBase;
-  } catch (err) {
-    const details = `${err.stderr || ""}\n${err.stdout || ""}`.toLowerCase();
-
-    if (details.includes("http error 429") || details.includes("too many requests")) {
-      throw new Error(
-        "YouTube bloqueó temporalmente la descarga por exceso de solicitudes (HTTP 429)."
-      );
-    }
-
-    if (
-      details.includes("sign in to confirm") ||
-      details.includes("not a bot") ||
-      details.includes("use --cookies")
-    ) {
-      throw new Error(
-        "YouTube exige autenticación para esta descarga. Debes usar cookies válidas de una sesión iniciada."
-      );
-    }
-
-    if (details.includes("requested format is not available")) {
-      throw new Error(
-        "YouTube no entregó un formato compatible para este video."
-      );
-    }
-
-    throw new Error(
-      `Fallo al descargar el video desde YouTube: ${err.message || "error desconocido"}`
-    );
-  }
+  return outBase;
 }
 
 async function convertMp4ToMp3(mp4Path) {
