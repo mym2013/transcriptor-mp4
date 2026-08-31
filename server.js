@@ -1,4 +1,4 @@
-// server.js — Transcripción AssemblyAI + Resumen LLM (DeepSeek) + frontend CAP B1
+// server.js — Transcripción Deepgram + Resumen LLM (DeepSeek) + frontend CAP B1
 // CAP12: soporte de AUDIO directo (mp3/wav/m4a) + video mp4 + URL
 
 require("dotenv").config();
@@ -19,12 +19,12 @@ if (!fetch) {
 
 // ===== Config básica =====
 const app = express();
-const PORT = process.env.PORT || 3001;
-const AAI_KEY = process.env.ASSEMBLYAI_API_KEY || "";
+const PORT = process.env.PORT || 3003;
+const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY || "";
 const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY || "";
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
 
-console.log(`[CAP11] AAI key cargada: ${AAI_KEY ? "SÍ" : "NO"}`);
+console.log(`[Deepgram] API key cargada: ${DEEPGRAM_API_KEY ? "SÍ" : "NO"}`);
 console.log(`[Resumen] Modo LLM (DeepSeek: ${DEEPSEEK_MODEL})`);
 
 // ===== Middlewares =====
@@ -447,70 +447,47 @@ async function convertAudioToMp3(inputAudioPath) {
   return mp3Path;
 }
 
-// ===== AssemblyAI: upload + transcripción =====
-async function aaiUpload(filePath) {
-  const stream = fs.createReadStream(filePath);
-
-  const resp = await fetch("https://api.assemblyai.com/v2/upload", {
-    method: "POST",
-    headers: { authorization: AAI_KEY },
-    body: stream,
-    duplex: "half",
-  });
-
-  const txt = await resp.text();
-
-  if (!resp.ok) throw new Error(`AAI upload HTTP ${resp.status} — ${txt}`);
-
-  return JSON.parse(txt).upload_url;
-}
-
-async function aaiTranscribe(audioUrl) {
-  const create = await fetch("https://api.assemblyai.com/v2/transcript", {
-    method: "POST",
-    headers: {
-      authorization: AAI_KEY,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      audio_url: audioUrl,
-      language_code: "es",
-    }),
-  });
-
-  if (!create.ok) {
-    const t = await create.text().catch(() => "");
-    throw new Error(`AAI transcript HTTP ${create.status} ${create.statusText} — ${t}`);
+// ===== Deepgram: transcripción =====
+async function transcribeWithDeepgram(mp3Path) {
+  if (!DEEPGRAM_API_KEY) {
+    throw new Error("DEEPGRAM_API_KEY no configurada.");
   }
 
-  const job = await create.json();
-  const id = job.id;
+  const audioData = await fsp.readFile(mp3Path);
+  const params = new URLSearchParams({
+    language: "es",
+    model: "nova-3",
+    punctuate: "true",
+    utterances: "true",
+    smart_format: "true",
+  });
 
-  console.log(`[AAI] Job creado: ${id}`);
-
-  while (true) {
-    await new Promise((res) => setTimeout(res, 2500));
-
-    const poll = await fetch(`https://api.assemblyai.com/v2/transcript/${id}`, {
-      headers: { authorization: AAI_KEY },
-    });
-
-    if (!poll.ok) {
-      const t = await poll.text().catch(() => "");
-      throw new Error(`AAI poll HTTP ${poll.status} ${poll.statusText} — ${t}`);
+  const resp = await fetch(
+    `https://api.deepgram.com/v1/listen?${params.toString()}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Token ${DEEPGRAM_API_KEY}`,
+        "Content-Type": "audio/mpeg",
+      },
+      body: audioData,
     }
+  );
 
-    const data = await poll.json();
-
-    if (data.status === "completed") {
-      console.log(`[AAI] Job completado: ${id}`);
-      return data.text || "";
-    }
-
-    if (data.status === "error") {
-      throw new Error(`AAI error: ${data.error || "desconocido"}`);
-    }
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => "");
+    throw new Error(`Deepgram HTTP ${resp.status} ${resp.statusText} — ${errText}`);
   }
+
+  const data = await resp.json();
+  const transcript =
+    data?.results?.channels?.[0]?.alternatives?.[0]?.transcript?.trim() || "";
+
+  if (!transcript) {
+    throw new Error("Deepgram respondió sin texto de transcripción.");
+  }
+
+  return transcript;
 }
 
 // ===== Endpoint principal: /transcribir =====
@@ -598,25 +575,27 @@ app.post(
         }
       }
 
-      // === Transcripción AssemblyAI ===
+      // === Transcripción Deepgram ===
       let transcriptText = null;
       let transcriptTxtPath = null;
       let summaryTxtPath = null;
       let summaryText = null;
       let transcribeError = null;
 
-      if (AAI_KEY) {
-        try {
-          const uploadUrl = await aaiUpload(mp3Path);
-          transcriptText = await aaiTranscribe(uploadUrl);
+      try {
+        console.log("[Deepgram] Inicio de transcripción.");
+        transcriptText = await transcribeWithDeepgram(mp3Path);
 
-          transcriptTxtPath = path.join(UPLOADS_DIR, path.basename(mp3Path, ".mp3") + "_transcripcion.txt");
-          await fsp.writeFile(transcriptTxtPath, transcriptText, "utf8");
-          console.log(`[AAI] Transcripción guardada en ${transcriptTxtPath}`);
-        } catch (err) {
-          transcribeError = err.message || String(err);
-          console.error("[AAI] Error:", transcribeError);
-        }
+        transcriptTxtPath = path.join(
+          UPLOADS_DIR,
+          path.basename(mp3Path, ".mp3") + "_transcripcion.txt"
+        );
+
+        await fsp.writeFile(transcriptTxtPath, transcriptText, "utf8");
+        console.log(`[Deepgram] Transcripción guardada en ${transcriptTxtPath}`);
+      } catch (err) {
+        transcribeError = err.message || String(err);
+        console.error("[Deepgram] Error:", transcribeError);
       }
 
       // === Resumen LLM + fallback local ===
@@ -644,7 +623,7 @@ app.post(
 
       return res.json({
         ok: true,
-        message: "Proceso completado (AssemblyAI + resumen).",
+        message: "Proceso completado (Deepgram + resumen).",
         sourceType,
         youtubeType,
         dvrAvailable,
