@@ -22,9 +22,10 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const AAI_KEY = process.env.ASSEMBLYAI_API_KEY || "";
 const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY || "";
+const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
 
 console.log(`[CAP11] AAI key cargada: ${AAI_KEY ? "SÍ" : "NO"}`);
-console.log(`[Resumen] Modo LLM (DeepSeek)`);
+console.log(`[Resumen] Modo LLM (DeepSeek: ${DEEPSEEK_MODEL})`);
 
 // ===== Middlewares =====
 app.use(cors());
@@ -184,8 +185,7 @@ function makeLocalSummary(text, maxSentences = 8) {
 async function generateLLMSummary(transcriptText) {
   if (!transcriptText || typeof transcriptText !== "string") return null;
   if (!DEEPSEEK_KEY) {
-    console.warn("[DeepSeek] No hay DEEPSEEK_API_KEY; no se generará resumen.");
-    return null;
+    throw new Error("DEEPSEEK_API_KEY no configurada.");
   }
 
   const prompt = buildExecutiveSummaryPrompt(transcriptText);
@@ -197,7 +197,7 @@ async function generateLLMSummary(transcriptText) {
       Authorization: `Bearer ${DEEPSEEK_KEY}`,
     },
     body: JSON.stringify({
-      model: "deepseek-v4-flash",
+      model: DEEPSEEK_MODEL,
       messages: [{ role: "user", content: prompt }],
       temperature: 0.3,
     }),
@@ -212,15 +212,166 @@ async function generateLLMSummary(transcriptText) {
   return data?.choices?.[0]?.message?.content?.trim() || null;
 }
 
+async function generateSummaryWithFallback(transcriptText) {
+  try {
+    const summary = await generateLLMSummary(transcriptText);
+    if (!summary) throw new Error("DeepSeek respondió sin contenido.");
+
+    console.log(`[Resumen] Generado con DeepSeek (${DEEPSEEK_MODEL}).`);
+    return { text: summary, mode: "deepseek", error: null };
+  } catch (err) {
+    const reason = err.message || String(err);
+    console.warn(`[Resumen] DeepSeek no disponible: ${reason}`);
+    console.warn("[Resumen] Usando fallback local.");
+
+    return {
+      text: makeLocalSummary(transcriptText),
+      mode: "local",
+      error: reason,
+    };
+  }
+}
+
 // ===== yt-dlp y ffmpeg =====
+async function inspectYoutubeUrl(url) {
+  console.log("[YouTube] Detectando tipo de contenido...");
+
+  try {
+    const result = await spawnOnce(
+      YT_DLP_PATH,
+      [
+        "--js-runtimes",
+        "node",
+        "--dump-single-json",
+        "--skip-download",
+        "--no-warnings",
+        url,
+      ],
+      { windowsHide: true }
+    );
+
+    const info = JSON.parse(result.stdout.trim());
+    const liveStatus = info?.live_status || null;
+
+    const isLive = info?.is_live === true || liveStatus === "is_live";
+    const wasLive = info?.was_live === true || liveStatus === "was_live";
+    const isUpcoming = liveStatus === "is_upcoming";
+
+    console.log(
+      `[YouTube] Tipo detectado: ${
+        isLive
+          ? "LIVE"
+          : isUpcoming
+          ? "LIVE PROGRAMADO"
+          : wasLive
+          ? "LIVE FINALIZADO / VIDEO PUBLICADO"
+          : "VIDEO PUBLICADO"
+      }`
+    );
+
+    return { isLive, wasLive, isUpcoming, liveStatus };
+  } catch (err) {
+    console.warn("[YouTube] No se pudo inspeccionar previamente la URL; se usará flujo normal.");
+    return {
+      isLive: false,
+      wasLive: false,
+      isUpcoming: false,
+      liveStatus: null,
+    };
+  }
+}
+
+function youtubeErrorDetails(err) {
+  return `${err?.stderr || ""}
+${err?.stdout || ""}`.toLowerCase();
+}
+
+function throwYoutubeDownloadError(err) {
+  const details = youtubeErrorDetails(err);
+
+  if (details.includes("http error 429") || details.includes("too many requests")) {
+    throw new Error(
+      "YouTube bloqueó temporalmente la descarga por exceso de solicitudes (HTTP 429)."
+    );
+  }
+
+  if (
+    details.includes("sign in to confirm") ||
+    details.includes("not a bot") ||
+    details.includes("use --cookies")
+  ) {
+    throw new Error(
+      "YouTube exige autenticación para esta descarga. Debes usar cookies válidas de una sesión iniciada."
+    );
+  }
+
+  if (details.includes("requested format is not available")) {
+    throw new Error("YouTube no entregó un formato compatible para este video.");
+  }
+
+  throw new Error(
+    `Fallo al descargar el video desde YouTube: ${err.message || "error desconocido"}`
+  );
+}
+
+function canFallbackFromLiveFromStart(err) {
+  const details = youtubeErrorDetails(err);
+
+  return (
+    details.includes("live-from-start") ||
+    details.includes("live from start") ||
+    details.includes("dvr") ||
+    details.includes("beginning of the live stream") ||
+    details.includes("cannot download from the start") ||
+    details.includes("fragment")
+  );
+}
+
 async function downloadYoutubeToMp4(url) {
   const stamp = Date.now();
   const outBase = path.join(UPLOADS_DIR, `${stamp}_video.mp4`);
+  const info = await inspectYoutubeUrl(url);
+
+  if (info.isUpcoming) {
+    throw new Error("La transmisión de YouTube todavía no ha comenzado.");
+  }
+
+  if (!info.isLive) {
+    console.log("[YouTube] Descargando video publicado.");
+
+    try {
+      await spawnOnce(YT_DLP_PATH, [
+        "--js-runtimes",
+        "node",
+        "-f",
+        "bv*+ba/b",
+        "--merge-output-format",
+        "mp4",
+        "-o",
+        outBase,
+        url,
+      ]);
+
+      return {
+        path: outBase,
+        youtubeType: "published",
+        dvrAvailable: null,
+        downloadedFromStart: null,
+      };
+    } catch (err) {
+      throwYoutubeDownloadError(err);
+    }
+  }
+
+  console.log("[YouTube Live] Live detectado.");
+  console.log("[YouTube Live] Intentando descarga desde el inicio con --live-from-start.");
+  console.log("[YouTube Live] Esperando fin de transmisión...");
 
   try {
     await spawnOnce(YT_DLP_PATH, [
       "--js-runtimes",
       "node",
+      "--live-from-start",
       "-f",
       "bv*+ba/b",
       "--merge-output-format",
@@ -230,35 +381,50 @@ async function downloadYoutubeToMp4(url) {
       url,
     ]);
 
-    return outBase;
+    console.log("[YouTube Live] Transmisión terminada.");
+    console.log("[YouTube Live] DVR disponible: SÍ.");
+    console.log("[YouTube Live] Descarga completada desde el inicio.");
+
+    return {
+      path: outBase,
+      youtubeType: "live",
+      dvrAvailable: true,
+      downloadedFromStart: true,
+    };
   } catch (err) {
-    const details = `${err.stderr || ""}\n${err.stdout || ""}`.toLowerCase();
-
-    if (details.includes("http error 429") || details.includes("too many requests")) {
-      throw new Error(
-        "YouTube bloqueó temporalmente la descarga por exceso de solicitudes (HTTP 429)."
-      );
+    if (!canFallbackFromLiveFromStart(err)) {
+      throwYoutubeDownloadError(err);
     }
 
-    if (
-      details.includes("sign in to confirm") ||
-      details.includes("not a bot") ||
-      details.includes("use --cookies")
-    ) {
-      throw new Error(
-        "YouTube exige autenticación para esta descarga. Debes usar cookies válidas de una sesión iniciada."
-      );
-    }
+    console.warn("[YouTube Live] DVR no disponible o --live-from-start no utilizable.");
+    console.warn("[YouTube Live] Continuando desde el punto actual.");
+    console.log("[YouTube Live] Esperando fin de transmisión...");
 
-    if (details.includes("requested format is not available")) {
-      throw new Error(
-        "YouTube no entregó un formato compatible para este video."
-      );
-    }
+    try {
+      await spawnOnce(YT_DLP_PATH, [
+        "--js-runtimes",
+        "node",
+        "-f",
+        "bv*+ba/b",
+        "--merge-output-format",
+        "mp4",
+        "-o",
+        outBase,
+        url,
+      ]);
 
-    throw new Error(
-      `Fallo al descargar el video desde YouTube: ${err.message || "error desconocido"}`
-    );
+      console.log("[YouTube Live] Transmisión terminada.");
+      console.log("[YouTube Live] Descarga completada desde el punto disponible.");
+
+      return {
+        path: outBase,
+        youtubeType: "live",
+        dvrAvailable: false,
+        downloadedFromStart: false,
+      };
+    } catch (fallbackErr) {
+      throwYoutubeDownloadError(fallbackErr);
+    }
   }
 }
 
@@ -397,6 +563,9 @@ app.post(
 
       let mp4Path = null;
       let mp3Path = null;
+      let youtubeType = null;
+      let dvrAvailable = null;
+      let downloadedFromStart = null;
 
       if (audioFile) {
         const audioPath = path.resolve(audioFile.path);
@@ -410,7 +579,11 @@ app.post(
         if (videoFile) {
           mp4Path = path.resolve(videoFile.path);
         } else if (url) {
-          mp4Path = await downloadYoutubeToMp4(url);
+          const youtubeResult = await downloadYoutubeToMp4(url);
+          mp4Path = youtubeResult.path;
+          youtubeType = youtubeResult.youtubeType;
+          dvrAvailable = youtubeResult.dvrAvailable;
+          downloadedFromStart = youtubeResult.downloadedFromStart;
         }
 
         if (!mp4Path) {
@@ -446,14 +619,20 @@ app.post(
         }
       }
 
-      // === Resumen LLM ===
+      // === Resumen LLM + fallback local ===
+      let summaryMode = null;
+      let summaryError = null;
+
       if (transcriptText) {
-        summaryText = await generateLLMSummary(transcriptText);
+        const summaryResult = await generateSummaryWithFallback(transcriptText);
+        summaryText = summaryResult.text;
+        summaryMode = summaryResult.mode;
+        summaryError = summaryResult.error;
 
         if (summaryText) {
           summaryTxtPath = path.join(UPLOADS_DIR, path.basename(mp3Path, ".mp3") + "_resumen.txt");
           await fsp.writeFile(summaryTxtPath, summaryText, "utf8");
-          console.log(`[Resumen LLM] Guardado en ${summaryTxtPath}`);
+          console.log(`[Resumen] Guardado en ${summaryTxtPath}`);
         }
       }
 
@@ -465,15 +644,20 @@ app.post(
 
       return res.json({
         ok: true,
-        message: "Proceso completado (AssemblyAI + resumen LLM).",
+        message: "Proceso completado (AssemblyAI + resumen).",
         sourceType,
+        youtubeType,
+        dvrAvailable,
+        downloadedFromStart,
         mp4Url: finalMp4 ? toPublicUrl(finalMp4) : null,
         mp3Url: finalMp3 ? toPublicUrl(finalMp3) : null,
         transcriptUrl: finalTr ? toPublicUrl(finalTr) : null,
         summaryUrl: finalSm ? toPublicUrl(finalSm) : null,
         transcriptText,
         summaryText,
+        summaryMode,
         transcribeError,
+        summaryError,
       });
     } catch (err) {
       console.error(err);
