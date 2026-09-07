@@ -344,7 +344,7 @@ async function downloadYoutubeToMp4(url) {
         "--js-runtimes",
         "node",
         "-f",
-        "bv*+ba/b",
+       "bv*[height<=720]+ba/b[height<=720]",
         "--merge-output-format",
         "mp4",
         "-o",
@@ -373,7 +373,7 @@ async function downloadYoutubeToMp4(url) {
       "node",
       "--live-from-start",
       "-f",
-      "bv*+ba/b",
+      "bv*[height<=720]+ba/b[height<=720]",
       "--merge-output-format",
       "mp4",
       "-o",
@@ -405,7 +405,7 @@ async function downloadYoutubeToMp4(url) {
         "--js-runtimes",
         "node",
         "-f",
-        "bv*+ba/b",
+        "bv*[height<=720]+ba/b[height<=720]",
         "--merge-output-format",
         "mp4",
         "-o",
@@ -455,7 +455,7 @@ async function transcribeWithDeepgram(mp3Path) {
 
   const audioData = await fsp.readFile(mp3Path);
   const params = new URLSearchParams({
-    language: "es",
+    language: "multi",
     model: "nova-3",
     punctuate: "true",
     utterances: "true",
